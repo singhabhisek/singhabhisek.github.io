@@ -2,5 +2,349 @@
 <head>Hello World</html>
 <body>
 <h1>Hello World!</h1>
+  
+  
+  
+  
+==========================================
+Running Vusers
+==========================================
+
+SELECT M.[End Time] AS ElapsedTimeInSeconds, M.[VUser ID] AS VuserID, M.[VUser Status ID] AS StatusID, S.[Vuser Status Name], (SELECT Count( VuserEvent_Meter.[VUser Status ID] )
+FROM VuserEvent_Meter WHERE
+VuserEvent_Meter.[InOut Flag]=1 AND
+VuserEvent_Meter.[End Time]<=M.[End Time] AND
+VuserEvent_Meter.[VUser ID]>=0 AND
+VuserEvent_Meter.[VUser Status ID]=2) AS StatusRun, (SELECT Count( VuserEvent_Meter.[VUser Status ID] ) FROM VuserEvent_Meter WHERE
+VuserEvent_Meter.[InOut Flag]=1 AND
+VuserEvent_Meter.[End Time]<=M.[End Time] AND
+VuserEvent_Meter.[VUser ID]>=0 AND
+VuserEvent_Meter.[VUser Status ID]=4) AS StatusQuit, ([StatusRun]-[StatusQuit]) AS RunningVusers
+FROM VuserEvent_Meter AS M INNER JOIN VuserStatus AS S ON M.[VUser Status ID] = S.[Vuser Status ID] WHERE (((M.[VUser ID])>=0) AND ((M.[VUser Status ID]) In (2,4)) AND ((M.[InOut Flag])=1))
+ORDER BY M.[End Time];
+
+
+==========================================
+Hits Per Second
+==========================================
+
+SELECT 
+( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )/86400 AS [TimeDuration],
+    Sum([value] * [acount]) / 16 AS [HitsPerSec],
+    16 AS [Interval - Value],
+    [describe id] AS [Value - Describe ID],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 ) AS [Granu],
+    'Hits' AS EventName
+FROM   
+    (webevent_meter
+        INNER JOIN event_map
+            ON ( webevent_meter.[event id] = event_map.[event id] ))
+WHERE  
+    ( [webevent_meter].[event id] <> (SELECT [Event ID] FROM Event_map WHERE [Event Name] = 'Throughput') )
+GROUP  BY 
+    [describe id],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )
+ORDER  BY 
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 );  
+
+
+==========================================
+Throughput
+==========================================
+
+SELECT 
+( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )/86400 AS [TimeDuration],
+    Sum([value] * [acount]) / 16 AS [Thruput],
+    16 AS [Interval - Value],
+    [describe id] AS [Value - Describe ID],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 ) AS [Granu],
+    'Hits' AS EventName
+FROM   
+    (webevent_meter
+        INNER JOIN event_map
+            ON ( webevent_meter.[event id] = event_map.[event id] ))
+WHERE  
+    ( [webevent_meter].[event id] = (SELECT [Event ID] FROM Event_map WHERE [Event Name] = 'Throughput') )
+GROUP  BY 
+    [describe id],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )
+ORDER  BY 
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 );  
+
+
+==========================================
+AVERAGE RESPONSE TIME BY TRANSACTIONS
+==========================================
+
+
+
+TRANSFORM First([Response_Time]) AS whatever
+SELECT [Granu]
+FROM(SELECT 
+    round(Sum((( [value] - [think time] )) * ( [acount] )) / Sum([acount]),3) AS [Response_Time],
+      ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )            AS [Granu],
+    [event name]
+FROM   
+    ((event_meter
+        INNER JOIN event_map
+            ON ( event_meter.[event id] = event_map.[event id] ))
+        INNER JOIN transactionendstatus
+            ON ( event_meter.[status1] = transactionendstatus.[status1] ))
+WHERE  
+    (( [event type] = 'Transaction' ))
+        AND (( [transaction end status] = 'Pass' ))
+        AND ( NOT ( ( [event name] LIKE '%:PLAY' )
+            OR ( [event name] LIKE '%:BUFFERING' )
+            OR ( [event name] LIKE '%:DOWNLOAD' )
+            OR ( [event name] LIKE '%:LAG' ) ) )
+GROUP  BY 
+    [describe id],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 ),
+    [event name]
+ORDER  BY 
+    [event name],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )
+)
+GROUP BY [Granu]
+PIVOT  [event name];
+
+
+
+==========================================
+TOTAL TPS
+==========================================
+
+
+TRANSFORM First([SumGAll]) AS whatever
+SELECT [ElapsedTIme]
+FROM(
+SELECT 
+    Sum([acount]) / 16 AS [SumGAll],
+    16 AS [Interval - Acount],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 ) AS [Granu],
+ ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )/86400 AS [ElapsedTIme],
+    [transaction end status]
+FROM
+    ((event_meter
+        INNER JOIN event_map
+            ON ( event_meter.[event id] = event_map.[event id] ))
+        INNER JOIN transactionendstatus
+            ON ( event_meter.[status1] = transactionendstatus.[status1] ))
+WHERE  
+    (( [event type] = 'Transaction' ))
+GROUP  BY 
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 ),
+    [transaction end status]
+ORDER  BY 
+    [transaction end status],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )
+)
+GROUP BY [ElapsedTIme]
+PIVOT  [transaction end status];
+
+
+
+=======================================================
+Transactions Per Second
+========================================================
+
+
+TRANSFORM First([SumGAll]) AS whatever
+SELECT [ElapsedTIme]
+FROM(
+SELECT 
+    round(Sum([acount]) / 16,3) AS [SumGAll],
+    16 AS [Interval - Acount],
+    [describe id] AS [Acount - Describe ID],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 ) AS [Granu],
+ ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )/86400 AS [ElapsedTime],
+    [event name],
+    [transaction end status]
+FROM   
+    ((event_meter
+        INNER JOIN event_map
+            ON ( event_meter.[event id] = event_map.[event id] ))
+        INNER JOIN transactionendstatus
+            ON ( event_meter.[status1] = transactionendstatus.[status1] ))
+WHERE  
+    (( [event type] = 'Transaction' ))
+        AND ( NOT ( ( [event name] LIKE '%:PLAY' )
+            OR ( [event name] LIKE '%:BUFFERING' )
+            OR ( [event name] LIKE '%:DOWNLOAD' )
+            OR ( [event name] LIKE '%:LAG' ) ) )
+GROUP  BY 
+    [describe id],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 ),
+    [event name],
+    [transaction end status]
+ORDER  BY 
+    [event name],
+    [transaction end status],
+    ( ( ( int(( [end time] - 0 ) / 16) ) * 16 ) + 0 )
+)
+GROUP BY [ElapsedTIme]
+PIVOT [event name];
+
+
+  ====
+  
+  
+  Function CopyFromExcelToPPT(excelFilePath As String, sheetName As String, rngCopy As String, dstSlide As Long, Optional shapeTop As Long, Optional shapeLeft As Long, Optional shapeHeight As Long, Optional shapeWidth As Long)
+    On Error GoTo ErrorHandl 'Handle Errors
+    
+    'Set Variables and Open Excel
+    Dim eApp As Excel.Application, wb As Excel.Workbook, ppt As PowerPoint.Presentation
+    Set eApp = New Excel.Application
+    eApp.Visible = False
+    Set wb = eApp.Workbooks.Open(excelFilePath)
+    Set ppt = ActivePresentation
+ 
+    'Copy cells in Excel
+    wb.Sheets(sheetName).Range(rngCopy).Copy
+    
+    'Paste into first slide in active PowerPoint presentation
+    ppt.Slides(1).Shapes.PasteSpecial ppPasteBitmap
+    
+    'Close and clean-up Excel
+    wb.Close SaveChanges:=False
+    eApp.Quit
+    Set wb = Nothing: Set eApp = Nothing
+    
+    'Move the new shape if left/top provided
+    If Not (IsMissing(shapeTop)) Then
+        With ppt.Slides(1).Shapes(ppt.Slides(1).Shapes.Count)
+            .Left = shapeLeft
+            .Top = shapeTop
+        End With
+    End If
+    
+    'Resize the shape if height/width provided
+    If Not (IsMissing(shapeHeight)) Then
+        With ppt.Slides(dstSlide).Shapes(ppt.Slides(1).Shapes.Count)
+            .Height = shapeHeight
+            .Width = shapeWidth
+        End With
+    End If
+ 
+    CopyFromExcelToPPT = True
+    Exit Function
+ErrorHandl:
+    'Make sure to close the workbook and Excel and return False
+    On Error Resume Next
+    If Not (eApp Is Nothing) Then
+        wb.Close SaveChanges:=False
+        eApp.Quit
+    End If
+    CopyFromExcelToPPT = False
+End Function
+Function CopyExcelObjects(ppt As Presentation, wb As Workbook, sheetName As String, chartName As String, dstSlide As Long, shapeNumber As Long, Optional shapeTop As Long, Optional shapeLeft As Long, Optional shapeHeight As Long, Optional shapeWidth As Long)
+    
+    Sheets(sheetName).Select
+    'Copy Chart in Excel
+    Sheets(sheetName).ChartObjects(chartName).Copy
+    
+    'Paste into first slide in active PowerPoint presentation
+    ppt.Slides(dstSlide).Shapes.PasteSpecial ppPasteBitmap
+    
+    'Move the new shape if left/top provided
+    If Not (IsMissing(shapeTop)) Then
+        With ppt.Slides(dstSlide).Shapes(shapeNumber)
+            .Left = shapeLeft
+            .Top = shapeTop
+            .Height = shapeHeight
+            .Width = shapeWidth
+        End With
+    End If
+    
+    'Resize the shape if height/width provided
+    If Not (IsMissing(shapeHeight)) Then
+        With ppt.Slides(dstSlide).Shapes(shapeNumber)
+            .Height = shapeHeight
+            .Width = shapeWidth
+        End With
+    End If
+    
+End Function
+
+
+Function OpenExistingPPTInstance(pptFilePath As String, excelFilePath As String)
+    On Error GoTo ErrorHandl 'Handle Errors
+    
+    'Set Variables and Open Excel
+    Dim eApp As Excel.Application, wb As Excel.Workbook, ppt As PowerPoint.Presentation, ws As Excel.Worksheet
+    Set eApp = New Excel.Application
+    eApp.Visible = False
+    Set wb = eApp.Workbooks.Open(excelFilePath)
+    'Set ppt = ActivePresentation
+ 
+    fileNameString = pptFilePath
+    
+    Set PowerPointApp = CreateObject("Powerpoint.Application")
+    DestinationPPT = "C:\Users\AS\Desktop\template.pptx"
+    Set ppt = PowerPointApp.Presentations.Open(DestinationPPT)
+
+
+    'Handle if the PowerPoint Application is not found
+    If Err.Number = 429 Then
+        MsgBox "Powerpoint could not be found.aborting."
+        GoTo ErrorHandl
+    End If
+    
+    'Optimize Code
+    'Application.ScreenUpdating = False
+
+    PowerPointApp.Visible = True
+  
+    '============================
+    
+    Call CopyExcelObjects(ppt, wb, "Hits Per Sec", "Chart 1", 1, 1, 50, 100, 400, 400)
+    Call CopyExcelObjects(ppt, wb, "thruput", "Chart 1", 1, 2, 50, 531, 400, 400)
+    Call CopyExcelObjects(ppt, wb, "tps", "Chart 1", 1, 3, 4.07 * 72, 1.39 * 72, 400, 400)
+    Call CopyExcelObjects(ppt, wb, "Avg RT", "Chart 1", 1, 4, 4.07 * 72, 7.38 * 72, 400, 400)
+    Call addoleobj(ppt, 2)
+    '============================
+        
+    OpenExistingPPTInstance = True
+    ppt.SaveAs fileNameString, FileFormat:=ppSaveAsOpenXMLPresentation
+    
+    ppt.Close
+    PowerPointApp.Quit
+
+    'Clear The Clipboard
+    Application.CutCopyMode = False
+    Exit Function
+ErrorHandl:
+    'Make sure to close the workbook and Excel and return False
+    On Error Resume Next
+    If Not (eApp Is Nothing) Then
+        wb.Close SaveChanges:=False
+        eApp.Quit
+    End If
+    If Not (PowerPointApp Is Nothing) Then
+        PowerPointApp.Quit
+    End If
+    OpenExistingPPTInstance = False
+End Function
+
+Sub Test()
+    If OpenExistingPPTInstance("C:\Users\AS\Desktop\testPPT.pptx", "C:\Users\AS\Desktop\LoadRunner Graphs.xlsx") Then
+        Debug.Print "Success"
+    Else
+        Debug.Print "Failure"
+    End If
+
+End Sub
+Function addoleobj(ppt As Presentation, slideNum As Long)
+Set myDocument = ppt.Slides(slideNum)
+
+myDocument.Shapes.AddOLEObject Left:=100, Top:=100, _
+    Width:=200, Height:=300, _
+    Filename:="C:\Users\AS\Desktop\LoadRunner Graphs.xlsx", IconLabel:="ResponseTimeSummary", DisplayAsIcon:=True
+
+
+End Function
+
+
+
 </body>
 </html>
